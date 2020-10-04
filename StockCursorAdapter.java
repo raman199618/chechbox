@@ -55,6 +55,9 @@ public class StockCursorAdapter extends CursorAdapter {
             @Override
             public void onClick(View view) {
                 activity.clickOnViewItem(id);
+                //use of onclick
+                //                activity.clickOnViewItem(id);
+
             }
         });
 
