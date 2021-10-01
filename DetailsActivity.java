@@ -278,6 +278,14 @@ public class DetailsActivity extends AppCompatActivity {
             return true;
         }
     }
+    
+     imageBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                tryToOpenImageSelector();
+                infoItemHasChanged = true;
+            }
+        });
 
     private void addValuesToEditItem(long itemId) {
         Cursor cursor = dbHelper.readItem(itemId);
