@@ -137,18 +137,18 @@ public class DetailsActivity extends AppCompatActivity {
         alertDialog.show();
     }
 
-    private void subtractOneToQuantity() {
-        String previousValueString = quantityEdit.getText().toString();
-        int previousValue;
-        if (previousValueString.isEmpty()) {
-            return;
-        } else if (previousValueString.equals("0")) {
-            return;
-        } else {
-            previousValue = Integer.parseInt(previousValueString);
-            quantityEdit.setText(String.valueOf(previousValue - 1));
-        }
-    }
+//     private void subtractOneToQuantity() {
+//         String previousValueString = quantityEdit.getText().toString();
+//         int previousValue;
+//         if (previousValueString.isEmpty()) {
+//             return;
+//         } else if (previousValueString.equals("0")) {
+//             return;
+//         } else {
+//             previousValue = Integer.parseInt(previousValueString);
+//             quantityEdit.setText(String.valueOf(previousValue - 1));
+//         }
+//     }
 
     private void sumOneToQuantity() {
         String previousValueString = quantityEdit.getText().toString();
