@@ -578,3 +578,554 @@ $.api = $.fn.api = function(parameters) {
               .fail(module.event.request.fail)
             ;
           },
+ mockedXHR: function () {
+            var
+              // xhr does not simulate these properties of xhr but must return them
+              textStatus     = false,
+              status         = false,
+              httpMessage    = false,
+              responder      = settings.mockResponse      || settings.response,
+              asyncResponder = settings.mockResponseAsync || settings.responseAsync,
+              asyncCallback,
+              response,
+              mockedXHR
+            ;
+
+            mockedXHR = $.Deferred()
+              .always(module.event.xhr.complete)
+              .done(module.event.xhr.done)
+              .fail(module.event.xhr.fail)
+            ;
+
+            if(responder) {
+              if( $.isFunction(responder) ) {
+                module.debug('Using specified synchronous callback', responder);
+                response = responder.call(context, requestSettings);
+              }
+              else {
+                module.debug('Using settings specified response', responder);
+                response = responder;
+              }
+              // simulating response
+              mockedXHR.resolveWith(context, [ response, textStatus, { responseText: response }]);
+            }
+            else if( $.isFunction(asyncResponder) ) {
+              asyncCallback = function(response) {
+                module.debug('Async callback returned response', response);
+
+                if(response) {
+                  mockedXHR.resolveWith(context, [ response, textStatus, { responseText: response }]);
+                }
+                else {
+                  mockedXHR.rejectWith(context, [{ responseText: response }, status, httpMessage]);
+                }
+              };
+              module.debug('Using specified async response callback', asyncResponder);
+              asyncResponder.call(context, requestSettings, asyncCallback);
+            }
+            return mockedXHR;
+          },
+
+          xhr: function() {
+            var
+              xhr
+            ;
+            // ajax request promise
+            xhr = $.ajax(ajaxSettings)
+              .always(module.event.xhr.always)
+              .done(module.event.xhr.done)
+              .fail(module.event.xhr.fail)
+            ;
+            module.verbose('Created server request', xhr);
+            return xhr;
+          }
+        },
+
+        set: {
+          error: function() {
+            module.verbose('Adding error state to element', $context);
+            $context.addClass(className.error);
+          },
+          loading: function() {
+            module.verbose('Adding loading state to element', $context);
+            $context.addClass(className.loading);
+            requestStartTime = new Date().getTime();
+          }
+        },
+
+        remove: {
+          error: function() {
+            module.verbose('Removing error state from element', $context);
+            $context.removeClass(className.error);
+          },
+          loading: function() {
+            module.verbose('Removing loading state from element', $context);
+            $context.removeClass(className.loading);
+          }
+        },
+
+        get: {
+          responseFromXHR: function(xhr) {
+            return $.isPlainObject(xhr)
+              ? (settings.dataType == 'json' || settings.dataType == 'jsonp')
+                ? module.decode.json(xhr.responseText)
+                : xhr.responseText
+              : false
+            ;
+          },
+          errorFromRequest: function(response, status, httpMessage) {
+            return ($.isPlainObject(response) && response.error !== undefined)
+              ? response.error // use json error message
+              : (settings.error[status] !== undefined) // use server error message
+                ? settings.error[status]
+                : httpMessage
+            ;
+          },
+          request: function() {
+            return module.request || false;
+          },
+          xhr: function() {
+            return module.xhr || false;
+          },
+          settings: function() {
+            var
+              runSettings
+            ;
+            runSettings = settings.beforeSend.call(context, settings);
+            if(runSettings) {
+              if(runSettings.success !== undefined) {
+                module.debug('Legacy success callback detected', runSettings);
+                module.error(error.legacyParameters, runSettings.success);
+                runSettings.onSuccess = runSettings.success;
+              }
+              if(runSettings.failure !== undefined) {
+                module.debug('Legacy failure callback detected', runSettings);
+                module.error(error.legacyParameters, runSettings.failure);
+                runSettings.onFailure = runSettings.failure;
+              }
+              if(runSettings.complete !== undefined) {
+                module.debug('Legacy complete callback detected', runSettings);
+                module.error(error.legacyParameters, runSettings.complete);
+                runSettings.onComplete = runSettings.complete;
+              }
+            }
+            if(runSettings === undefined) {
+              module.error(error.noReturnedValue);
+            }
+            return (runSettings !== undefined)
+              ? $.extend(true, {}, runSettings)
+              : $.extend(true, {}, settings)
+            ;
+          },
+          urlEncodedValue: function(value) {
+            var
+              decodedValue   = window.decodeURIComponent(value),
+              encodedValue   = window.encodeURIComponent(value),
+              alreadyEncoded = (decodedValue !== value)
+            ;
+            if(alreadyEncoded) {
+              module.debug('URL value is already encoded, avoiding double encoding', value);
+              return value;
+            }
+            module.verbose('Encoding value using encodeURIComponent', value, encodedValue);
+            return encodedValue;
+          },
+          defaultData: function() {
+            var
+              data = {}
+            ;
+            if( !$.isWindow(element) ) {
+              if( module.is.input() ) {
+                data.value = $module.val();
+              }
+              else if( !module.is.form() ) {
+
+              }
+              else {
+                data.text = $module.text();
+              }
+            }
+            return data;
+          },
+          event: function() {
+            if( $.isWindow(element) || settings.on == 'now' ) {
+              module.debug('API called without element, no events attached');
+              return false;
+            }
+            else if(settings.on == 'auto') {
+              if( $module.is('input') ) {
+                return (element.oninput !== undefined)
+                  ? 'input'
+                  : (element.onpropertychange !== undefined)
+                    ? 'propertychange'
+                    : 'keyup'
+                ;
+              }
+              else if( $module.is('form') ) {
+                return 'submit';
+              }
+              else {
+                return 'click';
+              }
+            }
+            else {
+              return settings.on;
+            }
+          },
+          templatedURL: function(action) {
+            action = action || $module.data(metadata.action) || settings.action || false;
+            url    = $module.data(metadata.url) || settings.url || false;
+            if(url) {
+              module.debug('Using specified url', url);
+              return url;
+            }
+            if(action) {
+              module.debug('Looking up url for action', action, settings.api);
+              if(settings.api[action] === undefined && !module.is.mocked()) {
+                module.error(error.missingAction, settings.action, settings.api);
+                return;
+              }
+              url = settings.api[action];
+            }
+            else if( module.is.form() ) {
+              url = $module.attr('action') || $context.attr('action') || false;
+              module.debug('No url or action specified, defaulting to form action', url);
+            }
+            return url;
+          }
+        },
+
+        abort: function() {
+          var
+            xhr = module.get.xhr()
+          ;
+          if( xhr && xhr.state() !== 'resolved') {
+            module.debug('Cancelling API request');
+            xhr.abort();
+          }
+        },
+
+        // reset state
+        reset: function() {
+          module.remove.error();
+          module.remove.loading();
+        },
+
+        setting: function(name, value) {
+          module.debug('Changing setting', name, value);
+          if( $.isPlainObject(name) ) {
+            $.extend(true, settings, name);
+          }
+          else if(value !== undefined) {
+            settings[name] = value;
+          }
+          else {
+            return settings[name];
+          }
+        },
+        internal: function(name, value) {
+          if( $.isPlainObject(name) ) {
+            $.extend(true, module, name);
+          }
+          else if(value !== undefined) {
+            module[name] = value;
+          }
+          else {
+            return module[name];
+          }
+        },
+        debug: function() {
+          if(settings.debug) {
+            if(settings.performance) {
+              module.performance.log(arguments);
+            }
+            else {
+              module.debug = Function.prototype.bind.call(console.info, console, settings.name + ':');
+              module.debug.apply(console, arguments);
+            }
+          }
+        },
+        verbose: function() {
+          if(settings.verbose && settings.debug) {
+            if(settings.performance) {
+              module.performance.log(arguments);
+            }
+            else {
+              module.verbose = Function.prototype.bind.call(console.info, console, settings.name + ':');
+              module.verbose.apply(console, arguments);
+            }
+          }
+        },
+        error: function() {
+          module.error = Function.prototype.bind.call(console.error, console, settings.name + ':');
+          module.error.apply(console, arguments);
+        },
+        performance: {
+          log: function(message) {
+            var
+              currentTime,
+              executionTime,
+              previousTime
+            ;
+            if(settings.performance) {
+              currentTime   = new Date().getTime();
+              previousTime  = time || currentTime;
+              executionTime = currentTime - previousTime;
+              time          = currentTime;
+              performance.push({
+                'Name'           : message[0],
+                'Arguments'      : [].slice.call(message, 1) || '',
+                //'Element'        : element,
+                'Execution Time' : executionTime
+              });
+            }
+            clearTimeout(module.performance.timer);
+            module.performance.timer = setTimeout(module.performance.display, 500);
+          },
+          display: function() {
+            var
+              title = settings.name + ':',
+              totalTime = 0
+            ;
+            time = false;
+            clearTimeout(module.performance.timer);
+            $.each(performance, function(index, data) {
+              totalTime += data['Execution Time'];
+            });
+            title += ' ' + totalTime + 'ms';
+            if(moduleSelector) {
+              title += ' \'' + moduleSelector + '\'';
+            }
+            if( (console.group !== undefined || console.table !== undefined) && performance.length > 0) {
+              console.groupCollapsed(title);
+              if(console.table) {
+                console.table(performance);
+              }
+              else {
+                $.each(performance, function(index, data) {
+                  console.log(data['Name'] + ': ' + data['Execution Time']+'ms');
+                });
+              }
+              console.groupEnd();
+            }
+            performance = [];
+          }
+        },
+        invoke: function(query, passedArguments, context) {
+          var
+            object = instance,
+            maxDepth,
+            found,
+            response
+          ;
+          passedArguments = passedArguments || queryArguments;
+          context         = element         || context;
+          if(typeof query == 'string' && object !== undefined) {
+            query    = query.split(/[\. ]/);
+            maxDepth = query.length - 1;
+            $.each(query, function(depth, value) {
+              var camelCaseValue = (depth != maxDepth)
+                ? value + query[depth + 1].charAt(0).toUpperCase() + query[depth + 1].slice(1)
+                : query
+              ;
+              if( $.isPlainObject( object[camelCaseValue] ) && (depth != maxDepth) ) {
+                object = object[camelCaseValue];
+              }
+              else if( object[camelCaseValue] !== undefined ) {
+                found = object[camelCaseValue];
+                return false;
+              }
+              else if( $.isPlainObject( object[value] ) && (depth != maxDepth) ) {
+                object = object[value];
+              }
+              else if( object[value] !== undefined ) {
+                found = object[value];
+                return false;
+              }
+              else {
+                module.error(error.method, query);
+                return false;
+              }
+            });
+          }
+          if ( $.isFunction( found ) ) {
+            response = found.apply(context, passedArguments);
+          }
+          else if(found !== undefined) {
+            response = found;
+          }
+          if($.isArray(returnedValue)) {
+            returnedValue.push(response);
+          }
+          else if(returnedValue !== undefined) {
+            returnedValue = [returnedValue, response];
+          }
+          else if(response !== undefined) {
+            returnedValue = response;
+          }
+          return found;
+        }
+      };
+
+      if(methodInvoked) {
+        if(instance === undefined) {
+          module.initialize();
+        }
+        module.invoke(query);
+      }
+      else {
+        if(instance !== undefined) {
+          instance.invoke('destroy');
+        }
+        module.initialize();
+      }
+    })
+  ;
+
+  return (returnedValue !== undefined)
+    ? returnedValue
+    : this
+  ;
+};
+
+$.api.settings = {
+
+  name              : 'API',
+  namespace         : 'api',
+
+  debug             : false,
+  verbose           : false,
+  performance       : true,
+
+  // object containing all templates endpoints
+  api               : {},
+
+  // whether to cache responses
+  cache             : true,
+
+  // whether new requests should abort previous requests
+  interruptRequests : true,
+
+  // event binding
+  on                : 'auto',
+
+  // context for applying state classes
+  stateContext      : false,
+
+  // duration for loading state
+  loadingDuration   : 0,
+
+  // whether to hide errors after a period of time
+  hideError         : 'auto',
+
+  // duration for error state
+  errorDuration     : 2000,
+
+  // whether parameters should be encoded with encodeURIComponent
+  encodeParameters  : true,
+
+  // API action to use
+  action            : false,
+
+  // templated URL to use
+  url               : false,
+
+  // base URL to apply to all endpoints
+  base              : '',
+
+  // data that will
+  urlData           : {},
+
+  // whether to add default data to url data
+  defaultData          : true,
+
+  // whether to serialize closest form
+  serializeForm        : false,
+
+  // how long to wait before request should occur
+  throttle             : 0,
+
+  // whether to throttle first request or only repeated
+  throttleFirstRequest : true,
+
+  // standard ajax settings
+  method            : 'get',
+  data              : {},
+  dataType          : 'json',
+
+  // mock response
+  mockResponse      : false,
+  mockResponseAsync : false,
+
+  // aliases for mock
+  response          : false,
+  responseAsync     : false,
+
+  // callbacks before request
+  beforeSend  : function(settings) { return settings; },
+  beforeXHR   : function(xhr) {},
+  onRequest   : function(promise, xhr) {},
+
+  // after request
+  onResponse  : false, // function(response) { },
+
+  // response was successful, if JSON passed validation
+  onSuccess   : function(response, $module) {},
+
+  // request finished without aborting
+  onComplete  : function(response, $module) {},
+
+  // failed JSON success test
+  onFailure   : function(response, $module) {},
+
+  // server error
+  onError     : function(errorMessage, $module) {},
+
+  // request aborted
+  onAbort     : function(errorMessage, $module) {},
+
+  successTest : false,
+
+  // errors
+  error : {
+    beforeSend        : 'The before send function has aborted the request',
+    error             : 'There was an error with your request',
+    exitConditions    : 'API Request Aborted. Exit conditions met',
+    JSONParse         : 'JSON could not be parsed during error handling',
+    legacyParameters  : 'You are using legacy API success callback names',
+    method            : 'The method you called is not defined',
+    missingAction     : 'API action used but no url was defined',
+    missingSerialize  : 'jquery-serialize-object is required to add form data to an existing data object',
+    missingURL        : 'No URL specified for api event',
+    noReturnedValue   : 'The beforeSend callback must return a settings object, beforeSend ignored.',
+    noStorage         : 'Caching responses locally requires session storage',
+    parseError        : 'There was an error parsing your request',
+    requiredParameter : 'Missing a required URL parameter: ',
+    statusMessage     : 'Server gave an error: ',
+    timeout           : 'Your request timed out'
+  },
+
+  regExp  : {
+    required : /\{\$*[A-z0-9]+\}/g,
+    optional : /\{\/\$*[A-z0-9]+\}/g,
+  },
+
+  className: {
+    loading : 'loading',
+    error   : 'error'
+  },
+
+  selector: {
+    disabled : '.disabled',
+    form      : 'form'
+  },
+
+  metadata: {
+    action  : 'action',
+    url     : 'url'
+  }
+};
+
+
+
+})( jQuery, window, document );
